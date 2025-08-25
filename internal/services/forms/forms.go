@@ -3,6 +3,7 @@ package forms
 import (
 	"FormManager/internal/model"
 	"FormManager/internal/services/authorisation"
+	"FormManager/internal/services/jwt"
 	"fmt"
 	"math/rand"
 )
@@ -19,11 +20,19 @@ type FormService struct {
 	UserRepository authorisation.UserRepository //Спросить про это
 }
 
-func NewFormService(repo FormRepository) *FormService {
-	return &FormService{FormRepository: repo}
+func NewFormService(formRepo FormRepository, userRepo authorisation.UserRepository) *FormService {
+	return &FormService{FormRepository: formRepo, UserRepository: userRepo}
 }
 
-func (f *FormService) CreateForm(form model.Form, user *model.User) (uint, error) {
+func (f *FormService) CreateForm(form model.Form, token string) (uint, error) {
+	jwtClaims, err := jwt.ParseToken(token)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse token: %w", err)
+	}
+	user, err := f.UserRepository.GetUserInformation(jwtClaims.Email)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get user information: %w", err)
+	}
 	form.Creator = *user
 	uid, err := f.FormRepository.CreateForm(form, generateRandomID())
 	if err != nil {
@@ -32,18 +41,39 @@ func (f *FormService) CreateForm(form model.Form, user *model.User) (uint, error
 	return uid, nil
 }
 
-func (f *FormService) EditForm(form model.Form, user model.User) error {
+func (f *FormService) EditForm(form model.Form, token string) error {
+	jwtClaims, err := jwt.ParseToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to parse token: %w", err)
+	}
+
+	user, err := f.UserRepository.GetUserInformation(jwtClaims.Email)
+	if err != nil {
+		return fmt.Errorf("failed to get user information: %w", err)
+	}
+
 	if user.Role.HasPermission(model.PermissionDelete) || user.GetEmail() == form.Creator.GetEmail() {
 		return f.FormRepository.EditForm(form)
 	}
 	return fmt.Errorf("unauthorized to edit form")
 }
 
-func (f *FormService) DeleteForm(formID uint, user model.User) error {
+func (f *FormService) DeleteForm(formID uint, token string) error {
+	jwtClaims, err := jwt.ParseToken(token)
+	if err != nil {
+		return fmt.Errorf("failed to parse token: %w", err)
+	}
+
+	user, err := f.UserRepository.GetUserInformation(jwtClaims.Email)
+	if err != nil {
+		return fmt.Errorf("failed to get user information: %w", err)
+	}
+
 	form, err := f.FormRepository.GetFormByID(formID)
 	if err != nil {
 		return err
 	}
+
 	if user.Role.HasPermission(model.PermissionDelete) || user.GetEmail() == form.Creator.GetEmail() {
 		return f.FormRepository.DeleteForm(formID)
 	}

@@ -2,7 +2,6 @@ package formsHandler
 
 import (
 	"FormManager/internal/model"
-	authHandler "FormManager/internal/ports/http/auth"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -11,21 +10,17 @@ import (
 )
 
 type FormInterface interface {
-	CreateForm(form model.Form, user *model.User) (uint, error)
-	EditForm(form model.Form) error
-	DeleteForm(formID uint, user model.User) error
+	CreateForm(form model.Form, token string) (uint, error)
+	EditForm(form model.Form, token string) error
+	DeleteForm(formID uint, token string) error
 	GetForm(formID uint) (model.Form, error)
 }
 
-func CreateForm(form FormInterface, auth authHandler.Auth) http.HandlerFunc {
+func CreateForm(form FormInterface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		user, err := auth.Me(tokenString)
-		if err != nil {
-			http.Error(w, "Failed to authenticate user: "+err.Error(), http.StatusUnauthorized)
-			return
-		}
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
 		var userForm model.Form
 
 		decoder := json.NewDecoder(r.Body)
@@ -34,7 +29,7 @@ func CreateForm(form FormInterface, auth authHandler.Auth) http.HandlerFunc {
 			return
 		}
 
-		formID, err := form.CreateForm(userForm, user)
+		formID, err := form.CreateForm(userForm, token)
 		if err != nil {
 			http.Error(w, "Create faild: "+err.Error(), http.StatusInternalServerError)
 			return
